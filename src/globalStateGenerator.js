@@ -209,7 +209,15 @@ export class GlobalStateGenerator {
         content += `---@field ${state.name} ${state.type}<br>\n`;
       }
 
-      content += '\n---@class PlayerTable\n';
+      content += '---@field set fun(self: any, key: string, value: any, replicated?: boolean)\n';
+
+      content += '\n---Set a state bag value\n';
+      content += '---@param key string The state key to set\n';
+      content += '---@param value any The value to set\n';
+      content += '---@param replicated boolean Whether to replicate to clients (server) or server (client)\n';
+      content += 'function StateBagInterface:set(key, value, replicated) end\n\n';
+
+      content += '---@class PlayerTable\n';
       content += '---@field state StateBagInterface\n';
       content += '\n---Get player by server id\n';
       content += '---@param serverId number\n';
