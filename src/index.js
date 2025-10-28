@@ -3,6 +3,7 @@ import path from 'path';
 import { glob } from 'glob';
 import { LuaParser } from './parser.js';
 import { TypeGenerator } from './generator.js';
+import { GlobalStateGenerator } from './globalStateGenerator.js';
 
 const CONFIG_FILE = 'config.json';
 
@@ -113,7 +114,11 @@ async function main() {
   // Map to store generators per resource
   const generators = new Map();
 
+  // GlobalState generator for all resources
+  const globalStateGenerator = new GlobalStateGenerator();
+
   let totalExports = 0;
+  let totalGlobalStates = 0;
 
   // Parse each file
   for (const filePath of luaFiles) {
@@ -124,6 +129,7 @@ async function main() {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       const exports = parser.parse(content, filePath);
+      const globalStates = parser.parseGlobalStates(content, filePath);
 
       if (exports.length > 0) {
         // Detect resource name for this file
@@ -142,15 +148,26 @@ async function main() {
         generator.addExports(exports, filePath);
         totalExports += exports.length;
       }
+
+      if (globalStates.length > 0) {
+        const resourceName = detectResourceName(filePath, config.inputDir);
+        globalStateGenerator.addGlobalStates(globalStates, resourceName);
+        totalGlobalStates += globalStates.length;
+
+        if (config.verbose) {
+          console.log(`✓ Found ${globalStates.length} GlobalState${globalStates.length === 1 ? '' : 's'}`);
+        }
+      }
     } catch (error) {
       console.error(`  ✗ Error parsing ${filePath}:`, error.message);
     }
   }
 
   console.log(`📊 Found ${totalExports} exports to document`);
+  console.log(`🌐 Found ${totalGlobalStates} GlobalState assignments (${globalStateGenerator.getCount()} unique)`);
 
-  if (totalExports === 0) {
-    console.log('❌ No exports found in Lua files');
+  if (totalExports === 0 && globalStateGenerator.getCount() === 0) {
+    console.log('❌ No exports or GlobalStates found in Lua files');
     return;
   }
 
@@ -170,6 +187,24 @@ async function main() {
     // Write type files
     for (const [filename, content] of Object.entries(typeFiles)) {
       const outputPath = path.join(outputDir, filename);
+      fs.writeFileSync(outputPath, content, 'utf-8');
+      console.log(`  ✓ Generated: ${outputPath}`);
+    }
+  }
+
+  // Generate GlobalState types in _internal folder
+  if (globalStateGenerator.getCount() > 0) {
+    console.log(`\n🌐 Generating GlobalState definitions...`);
+    const internalDir = path.join(config.outputDir, '_internal');
+
+    if (!fs.existsSync(internalDir)) {
+      fs.mkdirSync(internalDir, { recursive: true });
+    }
+
+    const globalStateFiles = globalStateGenerator.generate();
+
+    for (const [filename, content] of Object.entries(globalStateFiles)) {
+      const outputPath = path.join(internalDir, filename);
       fs.writeFileSync(outputPath, content, 'utf-8');
       console.log(`  ✓ Generated: ${outputPath}`);
     }

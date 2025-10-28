@@ -4,6 +4,7 @@
 export class LuaParser {
   constructor() {
     this.exports = [];
+    this.globalStates = [];
   }
 
   /**
@@ -30,6 +31,86 @@ export class LuaParser {
     }
 
     return this.exports;
+  }
+
+  /**
+   * Parse GlobalState assignments from Lua file content
+   * @param {string} content - The Lua file content
+   * @param {string} filePath - The file path for context
+   * @returns {Array} Array of GlobalState definitions
+   */
+  parseGlobalStates(content, filePath) {
+    this.globalStates = [];
+    const lines = content.split('\n');
+    const context = this.detectContext(filePath);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Skip commented lines
+      if (line.startsWith('--')) {
+        continue;
+      }
+
+      // Match GlobalState.something = value
+      const match = line.match(/GlobalState\.(\w+)\s*=\s*(.+)/);
+      if (match) {
+        const name = match[1];
+        const value = match[2].trim();
+
+        // Infer type from value
+        const type = this.inferTypeFromValue(value);
+
+        this.globalStates.push({
+          name,
+          type,
+          context,
+          filePath,
+          value
+        });
+      }
+    }
+
+    return this.globalStates;
+  }
+
+  /**
+   * Infer Lua type from a value string
+   * @param {string} value
+   * @returns {string}
+   */
+  inferTypeFromValue(value) {
+    // Remove trailing comments
+    value = value.split('--')[0].trim();
+
+    // Boolean
+    if (value === 'true' || value === 'false') {
+      return 'boolean';
+    }
+
+    // Nil
+    if (value === 'nil') {
+      return 'nil';
+    }
+
+    // String (single or double quotes)
+    if ((value.startsWith("'") && value.endsWith("'")) ||
+        (value.startsWith('"') && value.endsWith('"'))) {
+      return 'string';
+    }
+
+    // Number
+    if (/^-?\d+\.?\d*$/.test(value)) {
+      return 'number';
+    }
+
+    // Table
+    if (value.startsWith('{')) {
+      return 'table';
+    }
+
+    // Default to any for complex expressions
+    return 'any';
   }
 
   /**
