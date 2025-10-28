@@ -3,12 +3,13 @@ import path from 'path';
 import { glob } from 'glob';
 import { LuaParser } from './parser.js';
 import { TypeGenerator } from './generator.js';
-import { GlobalStateGenerator } from './state_generator.js';
+import { StateBagGenerator } from './state_generator.js';
 
 const CONFIG_FILE = 'config.json';
 
 /**
  * Load configuration from file
+ * @returns {Object} Parsed configuration object
  */
 function loadConfig() {
   const configPath = path.join(process.cwd(), CONFIG_FILE);
@@ -31,6 +32,8 @@ function loadConfig() {
 
 /**
  * Find Lua files based on configuration
+ * @param {Object} config - Configuration object
+ * @returns {Promise<Array>} Array of file paths
  */
 async function findLuaFiles(config) {
   const { inputDir, excludePatterns } = config;
@@ -53,8 +56,10 @@ async function findLuaFiles(config) {
 }
 
 /**
- * Detect resource name from file path
- * Looks for fxmanifest.lua in parent directories
+ * Detect resource name from file path by looking for fxmanifest.lua
+ * @param {string} filePath - Full path to the file
+ * @param {string} inputDir - Base input directory
+ * @returns {string} Detected resource name
  */
 function detectResourceName(filePath, inputDir) {
   let currentDir = path.dirname(filePath);
@@ -111,12 +116,11 @@ async function main() {
 
   const parser = new LuaParser();
 
-  // Map to store generators per resource
-  const generators = new Map();
+  // Map to store type generators per resource
+  const resourceGenerators = new Map();
 
-  // State generator for all resources
-  //TODO: Rename to StateGenerator
-  const stateGenerator = new GlobalStateGenerator();
+  // State bag generator for all resources (GlobalState, Player.state, LocalPlayer.state)
+  const stateBagGenerator = new StateBagGenerator();
 
   let totalExports = 0;
   let totalGlobalStates = 0;
@@ -139,12 +143,12 @@ async function main() {
         // Detect resource name for this file
         const resourceName = detectResourceName(filePath, config.inputDir);
 
-        // Get or create generator for this resource
-        if (!generators.has(resourceName)) {
-          generators.set(resourceName, new TypeGenerator(resourceName));
+        // Get or create type generator for this resource
+        if (!resourceGenerators.has(resourceName)) {
+          resourceGenerators.set(resourceName, new TypeGenerator(resourceName));
         }
 
-        const generator = generators.get(resourceName);
+        const generator = resourceGenerators.get(resourceName);
 
         if (config.verbose) {
           console.log(`✓ Found ${exports.length} export${exports.length === 1 ? '' : 's'}`);
@@ -155,7 +159,7 @@ async function main() {
 
       if (globalStates.length > 0) {
         const resourceName = detectResourceName(filePath, config.inputDir);
-        stateGenerator.addGlobalStates(globalStates, resourceName);
+        stateBagGenerator.addGlobalStates(globalStates, resourceName);
         totalGlobalStates += globalStates.length;
 
         if (config.verbose) {
@@ -165,7 +169,7 @@ async function main() {
 
       if (playerStatesResult.playerStates.length > 0) {
         const resourceName = detectResourceName(filePath, config.inputDir);
-        stateGenerator.addPlayerStates(playerStatesResult.playerStates, resourceName);
+        stateBagGenerator.addPlayerStates(playerStatesResult.playerStates, resourceName);
         totalPlayerStates += playerStatesResult.playerStates.length;
 
         if (config.verbose) {
@@ -175,7 +179,7 @@ async function main() {
 
       if (playerStatesResult.localPlayerStates.length > 0) {
         const resourceName = detectResourceName(filePath, config.inputDir);
-        stateGenerator.addLocalPlayerStates(playerStatesResult.localPlayerStates, resourceName);
+        stateBagGenerator.addLocalPlayerStates(playerStatesResult.localPlayerStates, resourceName);
         totalLocalPlayerStates += playerStatesResult.localPlayerStates.length;
 
         if (config.verbose) {
@@ -188,18 +192,18 @@ async function main() {
   }
 
   console.log(`📊 Found ${totalExports} exports to document`);
-  console.log(`🌐 Found ${totalGlobalStates} GlobalState assignments (${stateGenerator.getCount()} unique)`);
-  console.log(`👤 Found ${totalPlayerStates + totalLocalPlayerStates} Player/LocalPlayer state assignments (${stateGenerator.getPlayerStateCount() + stateGenerator.getLocalPlayerStateCount()} unique)`);
+  console.log(`🌐 Found ${totalGlobalStates} GlobalState assignments (${stateBagGenerator.getCount()} unique)`);
+  console.log(`👤 Found ${totalPlayerStates + totalLocalPlayerStates} Player/LocalPlayer state assignments (${stateBagGenerator.getPlayerStateCount() + stateBagGenerator.getLocalPlayerStateCount()} unique)`);
 
-  if (totalExports === 0 && stateGenerator.getTotalCount() === 0) {
+  if (totalExports === 0 && stateBagGenerator.getTotalCount() === 0) {
     console.log('❌ No exports or states found in Lua files');
     return;
   }
 
   // Generate type files for each resource
-  console.log(`📝 Generating type definitions for ${generators.size} resource${generators.size === 1 ? '' : 's'}...`);
+  console.log(`📝 Generating type definitions for ${resourceGenerators.size} resource${resourceGenerators.size === 1 ? '' : 's'}...`);
 
-  for (const [resourceName, generator] of generators) {
+  for (const [resourceName, generator] of resourceGenerators) {
     const outputDir = path.join(config.outputDir, resourceName);
 
     // Ensure output directory exists
@@ -217,8 +221,8 @@ async function main() {
     }
   }
 
-  // Generate GlobalState types in _internal folder
-  if (stateGenerator.getTotalCount() > 0) {
+  // Generate StateBag types in _internal folder
+  if (stateBagGenerator.getTotalCount() > 0) {
     console.log(`\n🌐 Generating state definitions...`);
     const internalDir = path.join(config.outputDir, '_internal');
 
@@ -226,7 +230,7 @@ async function main() {
       fs.mkdirSync(internalDir, { recursive: true });
     }
 
-    const stateFiles = stateGenerator.generate();
+    const stateFiles = stateBagGenerator.generate();
 
     for (const [filename, content] of Object.entries(stateFiles)) {
       const outputPath = path.join(internalDir, filename);

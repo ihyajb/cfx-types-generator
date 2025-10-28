@@ -1,7 +1,7 @@
 /**
- * Generates Lua type definition files for GlobalState variables
+ * Generates Lua type definition files for StateBag variables (GlobalState, Player.state, LocalPlayer.state)
  */
-export class GlobalStateGenerator {
+export class StateBagGenerator {
   constructor() {
     this.globalStates = new Map(); // Map of state name to type info
     this.playerStates = new Map(); // Map of Player state name to type info
@@ -101,7 +101,7 @@ export class GlobalStateGenerator {
   }
 
   /**
-   * Generate type definition files for GlobalState
+   * Generate type definition files for StateBags (GlobalState, Player.state, LocalPlayer.state)
    * @returns {Object} Map of filename to content
    */
   generate() {
@@ -118,118 +118,138 @@ export class GlobalStateGenerator {
   }
 
   /**
-   * Generate the state type definition file
+   * Generate the complete state type definition file with all StateBag types
    * @returns {string}
    */
   generateStateFile() {
     let content = '---@meta\n\n';
 
-    // GlobalState section
+    // GlobalState Section
     if (this.globalStates.size > 0) {
-      content += '---Global state table accessible across all clients and server\n';
-      content += '---@class GlobalStateTable\n';
-
-      const sortedGlobalStates = Array.from(this.globalStates.values()).sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
-
-      for (const state of sortedGlobalStates) {
-        // if (state.resources.length > 0) {
-        //   content += `---Used by: ${state.resources.join(', ')}\n`;
-        // }
-        content += `---@field ${state.name} ${state.type}\n`;
-      }
-
-      content += '\n---@type GlobalStateTable\n';
-      content += 'GlobalState = {}\n\n';
+      content += this.generateGlobalStateSection();
     }
 
-    // Shared Player/LocalPlayer state section
+    // Player/LocalPlayer State Section
     if (this.playerStates.size > 0 || this.localPlayerStates.size > 0) {
-      content += '---Player state table\n';
-      content += '---@class StateBagInterface\n';
-
-      // Merge all player and local player states
-      const allStates = new Map();
-
-      // Add all Player() states
-      for (const [name, state] of this.playerStates) {
-        allStates.set(name, {
-          ...state,
-          contexts: ['server'],
-          replication: state.replicated ? 'to client' : 'server only'
-        });
-      }
-
-      // Add all LocalPlayer states
-      for (const [name, state] of this.localPlayerStates) {
-        const existing = allStates.get(name);
-        if (existing) {
-          // Already exists, merge
-          existing.contexts.push('client');
-        //   if (!existing.resources.includes(...state.resources)) {
-        //     existing.resources.push(...state.resources);
-        //   }
-          // Update replication info
-          if (state.replicated) {
-            if (existing.replication === 'server only') {
-              existing.replication = 'bidirectional';
-            } else if (existing.replication === 'to client') {
-              existing.replication = 'bidirectional';
-            }
-          }
-          // If types differ, use 'any'
-          if (existing.type !== state.type) {
-            existing.type = 'any';
-          }
-        } else {
-          // Add as new state
-          allStates.set(name, {
-            ...state,
-            contexts: ['client'],
-            replication: state.replicated ? 'to server' : 'client only'
-          });
-        }
-      }
-
-      const sortedStates = Array.from(allStates.values()).sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
-
-      for (const state of sortedStates) {
-        //TODO: Make this clearer later
-        // if (state.resources.length > 0) {
-        //   content += `---Used by: ${state.resources.join(', ')}\n`;
-        // }
-        // content += `---Contexts: ${state.contexts.join(', ')}<br>\n`;
-        // if (state.replication !== 'client only' && state.replication !== 'server only') {
-        //   content += `---Replicated: ${state.replication}<br>\n`;
-        // }
-        content += `---@field ${state.name} ${state.type}<br>\n`;
-      }
-
-      content += '---@field set fun(self: any, key: string, value: any, replicated?: boolean)\n';
-
-      content += '\n---Set a state bag value\n';
-      content += '---@param key string The state key to set\n';
-      content += '---@param value any The value to set\n';
-      content += '---@param replicated boolean Whether to replicate to clients (server) or server (client)\n';
-      content += 'function StateBagInterface:set(key, value, replicated) end\n\n';
-
-      content += '---@class PlayerTable\n';
-      content += '---@field state StateBagInterface\n';
-      content += '\n---Get player by server id\n';
-      content += '---@param serverId number\n';
-      content += '---@return PlayerTable\n';
-      content += 'function Player(serverId) end\n\n';
-
-      content += '---@class LocalPlayerTable\n';
-      content += '---@field state StateBagInterface\n';
-      content += '\n---@type LocalPlayerTable\n';
-      content += 'LocalPlayer = {}\n';
+      content += this.generatePlayerStateSection();
     }
 
     return content;
+  }
+
+  /**
+   * Generate the GlobalState section of the type definition file
+   * @returns {string}
+   */
+  generateGlobalStateSection() {
+    let content = '';
+    content += '---Global state table accessible across all clients and server\n';
+    content += '---@class GlobalStateTable\n';
+
+    const sortedGlobalStates = Array.from(this.globalStates.values()).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+
+    for (const state of sortedGlobalStates) {
+      content += `---@field ${state.name} ${state.type}\n`;
+    }
+
+    content += '\n---@type GlobalStateTable\n';
+    content += 'GlobalState = {}\n\n';
+
+    return content;
+  }
+
+  /**
+   * Generate the Player/LocalPlayer state section of the type definition file
+   * @returns {string}
+   */
+  generatePlayerStateSection() {
+    let content = '';
+    content += '---Player state table\n';
+    content += '---@class StateBagInterface\n';
+
+    // Merge all player and local player states
+    const allStates = this.mergePlayerStates();
+
+    const sortedStates = Array.from(allStates.values()).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+
+    for (const state of sortedStates) {
+      content += `---@field ${state.name} ${state.type}\n`;
+    }
+
+    content += '---@field set fun(self: any, key: string, value: any, replicated?: boolean)\n';
+
+    content += '\n---Set a state bag value\n';
+    content += '---@param key string The state key to set\n';
+    content += '---@param value any The value to set\n';
+    content += '---@param replicated boolean Whether to replicate to clients (server) or server (client)\n';
+    content += 'function StateBagInterface:set(key, value, replicated) end\n\n';
+
+    content += '---@class PlayerTable\n';
+    content += '---@field state StateBagInterface\n';
+    content += '---@param serverId number\n';
+    content += '---@return PlayerTable\n';
+    content += 'function Player(serverId) end\n\n';
+
+    content += '---@class LocalPlayerTable\n';
+    content += '---@field state StateBagInterface\n';
+    content += '\n---@type LocalPlayerTable\n';
+    content += 'LocalPlayer = {}\n';
+
+    return content;
+  }
+
+  /**
+   * Merge Player and LocalPlayer states into a unified map
+   * Handles conflicts by merging contexts and replication info
+   * @returns {Map} Merged state map
+   */
+  mergePlayerStates() {
+    const allStates = new Map();
+
+    // Add all Player() states
+    for (const [name, state] of this.playerStates) {
+      allStates.set(name, {
+        ...state,
+        contexts: ['server'],
+        replication: state.replicated ? 'to client' : 'server only'
+      });
+    }
+
+    // Add all LocalPlayer states
+    for (const [name, state] of this.localPlayerStates) {
+      const existing = allStates.get(name);
+      if (existing) {
+        // Already exists, merge contexts
+        existing.contexts.push('client');
+
+        // Update replication info
+        if (state.replicated) {
+          if (existing.replication === 'server only') {
+            existing.replication = 'bidirectional';
+          } else if (existing.replication === 'to client') {
+            existing.replication = 'bidirectional';
+          }
+        }
+
+        // If types differ, use 'any'
+        if (existing.type !== state.type) {
+          existing.type = 'any';
+        }
+      } else {
+        // Add as new state
+        allStates.set(name, {
+          ...state,
+          contexts: ['client'],
+          replication: state.replicated ? 'to server' : 'client only'
+        });
+      }
+    }
+
+    return allStates;
   }
 
   /**

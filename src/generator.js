@@ -53,12 +53,10 @@ export class TypeGenerator {
   }
 
   /**
-   * Generate the shared.lua file with class definition
-   * @returns {string}
+   * Generate the shared.lua file with base class definition for LSP autocomplete
+   * @returns {string} Generated Lua type definition content
    */
   generateSharedFile() {
-    //! Can LUA class names have special chars?
-    // const className = this.resourceName.replace(/-/g, '_');
     const className = this.resourceName;
 
     // Use bracket notation if resource name has dashes
@@ -70,10 +68,10 @@ export class TypeGenerator {
   }
 
   /**
-   * Generate a type definition file
-   * @param {Array} exports
-   * @param {string} context
-   * @returns {string}
+   * Generate a type definition file for a specific context
+   * @param {Array} exports - Export definitions to generate
+   * @param {string} context - Context (client/server/shared)
+   * @returns {string} Generated Lua type definition content
    */
   generateTypeFile(exports, context) {
     let content = '---@meta\n\n';
@@ -92,10 +90,10 @@ export class TypeGenerator {
   }
 
   /**
-   * Generate a single export definition
-   * @param {Object} exp
-   * @param {string} context
-   * @returns {string}
+   * Generate a single export definition with full documentation
+   * @param {Object} exp - Export definition
+   * @param {string} context - Context (client/server/shared)
+   * @returns {string} Generated Lua type definition for the export
    */
   generateExportDefinition(exp, context) {
     let def = '';
@@ -112,7 +110,7 @@ export class TypeGenerator {
         }
       }
     } else {
-      def += `--This export doesn't have a description\n`;
+      def += `---This export doesn't have a description\n`;
     }
 
     // Merge documentation params with function params
@@ -156,10 +154,11 @@ export class TypeGenerator {
   }
 
   /**
-   * Merge function parameters with documentation
-   * @param {Array} funcParams
-   * @param {Array} docParams
-   * @returns {Array}
+   * Merge function parameters with their documentation
+   * Combines information from both sources, preferring documented types
+   * @param {Array} funcParams - Parameters from function signature
+   * @param {Array} docParams - Parameters from documentation
+   * @returns {Array} Merged parameter definitions
    */
   mergeParameters(funcParams, docParams) {
     const merged = [];
