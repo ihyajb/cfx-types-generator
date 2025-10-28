@@ -61,16 +61,40 @@ export class LuaParser {
   parseExport(lines, lineIndex, context) {
     const exportLine = lines[lineIndex];
 
-    // Fucked regex to extract export name
-    const exportMatch = exportLine.match(/exports\s*\(\s*['"]([^'"]+)['"]/);
-    if (!exportMatch) {
-      return null;
+    let isInline = false;
+    let inlineCheckText = exportLine;
+
+    // Check up to 3 lines ahead for inline function definition
+    for (let i = 0; i < 3 && lineIndex + i < lines.length; i++) {
+      const checkLine = lines[lineIndex + i].trim();
+      // Skip commented lines when checking for inline functions
+      if (!checkLine.startsWith('--')) {
+        inlineCheckText += ' ' + checkLine;
+        if (inlineCheckText.includes('function(') || inlineCheckText.includes('function (')) {
+          isInline = true;
+          break;
+        }
+      }
     }
 
-    const exportName = exportMatch[1];
+    // Match export with either a function reference or inline function
+    let exportMatch = exportLine.match(/exports\s*\(\s*['"]([^'"]+)['"]\s*,\s*(\w+)\s*\)/);
+    let exportName, functionRef;
 
-    // Is this export an inline function or defined elsewhere?
-    const isInline = exportLine.includes('function()') || exportLine.includes('function(');
+    if (exportMatch) {
+      exportName = exportMatch[1];
+      functionRef = exportMatch[2];
+    } else if (isInline) {
+      const inlineMatch = exportLine.match(/exports\s*\(\s*['"]([^'"]+)['"]\s*,\s*function/);
+      if (inlineMatch) {
+        exportName = inlineMatch[1];
+        functionRef = null; // No reference name for inline functions
+      } else {
+        return null;
+      }
+    } else {
+      return null;
+    }
 
     let functionDef = null;
     let docs = null;
@@ -78,7 +102,7 @@ export class LuaParser {
 
     if (!isInline) {
       // Look for function definition above
-      const result = this.findFunctionDefinition(lines, lineIndex, exportName);
+      const result = this.findFunctionDefinition(lines, lineIndex, functionRef);
       if (result) {
         functionDef = result.functionDef;
         functionLineIndex = result.lineIndex;
@@ -133,21 +157,20 @@ export class LuaParser {
       }
     }
 
-    // Collect all comment lines above
-    //TODO: Cap at some reasonable number (like 10?) to avoid infinite loops lol
+    // Collects all comment lines above & stop at first non-comment line
     while (i >= 0) {
       const line = lines[i].trim();
 
-      if (line.startsWith('---')) {
-        commentLines.unshift(line.substring(3).trim());
+      if (line === '') {
+        // Stop at empty line - no documentation
+        break;
+      } else if (line.startsWith('---')) {
+        const commentContent = line.substring(3).trim();
+        commentLines.unshift(commentContent);
         i--;
       } else if (line.startsWith('--') && !line.startsWith('---')) {
-        if (hasThreeDashComments) {
-          commentLines.unshift(line.substring(2).trim());
-        }
-        i--;
-      } else if (line === '') {
-        // Allow empty lines (i dont remember why)
+        // Collect two-dash comments also
+        commentLines.unshift(line.substring(2).trim());
         i--;
       } else {
         // Stop at non-comment, non-empty line
@@ -208,6 +231,11 @@ export class LuaParser {
     for (let i = exportLineIndex - 1; i >= Math.max(0, exportLineIndex - 500); i--) {
       const line = lines[i].trim();
 
+      // Skip commented-out lines
+      if (line.startsWith('--')) {
+        continue;
+      }
+
       // Check for local function or global function
       const funcMatch = line.match(/(?:local\s+)?function\s+(\w+)\s*\(([^)]*)\)/);
 
@@ -229,12 +257,15 @@ export class LuaParser {
    * @returns {Object}
    */
   parseInlineFunction(lines, lineIndex) {
-    const exportLine = lines[lineIndex];
+    // Combine next few lines to handle multi-line function definitions (why do devs do this ಠ_ಠ)
+    let combinedText = '';
+    for (let i = 0; i < 5 && lineIndex + i < lines.length; i++) {
+      combinedText += ' ' + lines[lineIndex + i].trim();
 
-    const match = exportLine.match(/function\s*\(([^)]*)\)/);
-
-    if (match) {
-      return this.parseFunctionSignature(match[1]);
+      const match = combinedText.match(/function\s*\(([^)]*)\)/);
+      if (match) {
+        return this.parseFunctionSignature(match[1]);
+      }
     }
 
     return { parameters: [], returnTypes: [] };
