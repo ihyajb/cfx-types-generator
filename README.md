@@ -8,6 +8,8 @@ A JavaScript tool that scans Lua files in a FiveM/RedM server and generates Type
 - Parses LuaDoc comments (`---@param`, `---@return`, etc.)
 - Detects both function-based and inline exports
 - Separates client, server, and shared exports
+- Generates type definitions for GlobalState variables
+- Generates type definitions for Player and LocalPlayer state bags
 - Configurable via JSON config file
 
 ## Installation
@@ -67,9 +69,11 @@ After generating types, add them to your VS Code settings:
 }
 ```
 
-## Supported Export Patterns
+## Supported Patterns
 
-### Function-Based Export
+### Export Patterns
+
+#### Function-Based Export
 
 ```lua
 --- Adds or updates multiple jobs in shared/jobs.lua.
@@ -84,7 +88,7 @@ end
 exports('CreateJobs', CreateJobs)
 ```
 
-### Inline Export
+#### Inline Export
 
 ```lua
 exports('CreateJobs', function(newJobs, commitToFile)
@@ -92,9 +96,40 @@ exports('CreateJobs', function(newJobs, commitToFile)
 end)
 ```
 
+### State Patterns
+
+The generator automatically detects and creates type definitions for Cfx state bags:
+
+#### GlobalState
+
+```lua
+-- Automatically detected and typed
+GlobalState.weather = "sunny"
+GlobalState.policeOnDuty = 5
+GlobalState.heistCooldown = true
+```
+
+#### Player State (Server)
+
+```lua
+-- Automatically detected and typed
+Player(source).state:set("isLoggedIn", true, true)
+Player(playerId).state.invBusy = false
+```
+
+#### LocalPlayer State (Client)
+
+```lua
+-- Automatically detected and typed
+LocalPlayer.state:set("inv_busy", false, true)
+LocalPlayer.state.dead = true
+```
+
 ## Example Output
 
-The generator creates files like this:
+The generator creates type definition files for both exports and state bags:
+
+### Export Types
 
 **types/my_resource/server.lua**
 ```lua
@@ -111,15 +146,17 @@ function exports.my_resource:CreateJobs(newJobs, commitToFile) end
 
 ## How It Works
 
-1. **Scanning**: Recursively finds all `.lua` files in the input directory *(skipping folders matching the excludePatterns config)*
-2. **Parsing**: Extracts `exports()` calls and their associated documentation
-3. **Documentation**: Parses LuaDoc comments (`---@param`, `---@return`, etc.)
-4. **Context Detection**: Determines if exports are client, server, or shared based on file paths
-5. **Generation**: Creates properly formatted Lua type definition files
+1. **Scanning**: Recursively finds all `.lua` files in the input directory (skipping folders matching the excludePatterns config)
+2. **Parsing**: Extracts `exports()` calls, GlobalState assignments, and Player/LocalPlayer state operations
+3. **Documentation**: Parses LuaDoc comments (`---@param`, `---@return`, etc.) for exports
+4. **Type Inference**: Infers types from assigned values for state variables
+5. **Context Detection**: Determines if exports are client, server, or shared based on file paths
+6. **State Aggregation**: Combines state definitions from all resources into unified interfaces
+7. **Generation**: Creates properly formatted Lua type definition files
 
 ## Tips
 
-- Use clear LuaDoc comments for best results
+- Use clear LuaDoc comments for best results with exports
 - Follow consistent naming conventions
 - Place client-side code in files containing "client" in the name
 - Place server-side code in files containing "server" in the name
