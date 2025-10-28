@@ -1,6 +1,6 @@
 # Cfx Lua Type Generator
 
-A JavaScript tool that scans Lua files in a FiveM/RedM server and generates TypeScript-style type definitions for Lua Language Server, similar to [ox_types](https://github.com/overextended/ox_types).
+Automatically generate Lua type definitions for your FiveM/RedM server resource exports. This tool scans your server files and creates IntelliSense type definitions for resource exports, Cfx GlobalState, LocalPlayer and Player state variables, giving you autocomplete and type checking in VS Code.
 
 ## Features
 
@@ -8,6 +8,8 @@ A JavaScript tool that scans Lua files in a FiveM/RedM server and generates Type
 - Parses LuaDoc comments (`---@param`, `---@return`, etc.)
 - Detects both function-based and inline exports
 - Separates client, server, and shared exports
+- Generates type definitions for GlobalState variables
+- Generates type definitions for Player and LocalPlayer state bags
 - Configurable via JSON config file
 
 ## Installation
@@ -45,16 +47,18 @@ Edit the `config.json` file in your project root:
 
 #### Configuration Options
 
-- **inputDir**: Directory to scan for Lua files (default: `./server`)
-- **outputDir**: Where to output generated type files (default: `./types`)
+- **inputDir**: Directory to scan for Lua files *(normally your server resources folder)*
+- **outputDir**: Where to output generated type files
 - **excludePatterns**: Glob patterns to exclude from scanning
 - **verbose**: Show detailed output during generation
 
 ### Using Generated Types
 
-After generating types, add them to your VS Code settings:
+Now that we generated the types, we need to add them to your VS Code settings:
 
-1. Install the [CfxLua IntelliSense](https://marketplace.visualstudio.com/items?itemName=communityox.cfxlua-vscode-cox) extension
+1. Install the following extensions
+    - [Lua](https://marketplace.visualstudio.com/items?itemName=sumneko.lua)
+    - [CfxLua IntelliSense](https://marketplace.visualstudio.com/items?itemName=communityox.cfxlua-vscode-cox)
 2. Open your VS Code settings (JSON)
 3. Add the types directory to `Lua.workspace.library`:
 
@@ -67,9 +71,9 @@ After generating types, add them to your VS Code settings:
 }
 ```
 
-## Supported Export Patterns
-
-### Function-Based Export
+## Supported Patterns
+### Export Patterns
+#### Function-Based Export
 
 ```lua
 --- Adds or updates multiple jobs in shared/jobs.lua.
@@ -84,7 +88,7 @@ end
 exports('CreateJobs', CreateJobs)
 ```
 
-### Inline Export
+#### Inline Export
 
 ```lua
 exports('CreateJobs', function(newJobs, commitToFile)
@@ -92,9 +96,32 @@ exports('CreateJobs', function(newJobs, commitToFile)
 end)
 ```
 
+### State Patterns
+#### GlobalState
+
+```lua
+GlobalState.weather = "sunny"
+GlobalState.policeOnDuty = 5
+GlobalState.heistCooldown = true
+```
+
+#### Player States
+
+```lua
+--SERVER
+Player(source).state:set("isLoggedIn", true, true)
+Player(playerId).state.invBusy = false
+
+--CLIENT
+LocalPlayer.state:set("inv_busy", false, true)
+LocalPlayer.state.dead = true
+```
+
 ## Example Output
 
-The generator creates files like this:
+The generator creates type definition files for both exports and state bags:
+
+### Export Types
 
 **types/my_resource/server.lua**
 ```lua
@@ -111,19 +138,22 @@ function exports.my_resource:CreateJobs(newJobs, commitToFile) end
 
 ## How It Works
 
-1. **Scanning**: Recursively finds all `.lua` files in the input directory *(skipping folders matching the excludePatterns config)*
-2. **Parsing**: Extracts `exports()` calls and their associated documentation
-3. **Documentation**: Parses LuaDoc comments (`---@param`, `---@return`, etc.)
-4. **Context Detection**: Determines if exports are client, server, or shared based on file paths
-5. **Generation**: Creates properly formatted Lua type definition files
+1. **Scanning**: Recursively finds all `.lua` files in the input directory (skipping folders matching the excludePatterns config)
+2. **Parsing**: Extracts `exports()` calls, GlobalState assignments, and Player/LocalPlayer state operations
+3. **Documentation**: Parses LuaDoc comments (`---@param`, `---@return`, etc.) for exports
+4. **Type Inference**: Infers types from assigned values for state variables
+5. **Context Detection**: Determines if exports are client, server, or shared based on file paths
+6. **State Aggregation**: Combines state definitions from all resources into unified interfaces
+7. **Generation**: Creates properly formatted Lua type definition files
 
 ## Tips
 
-- Use clear LuaDoc comments for best results
+- Use clear LuaDoc comments for best results with exports
 - Follow consistent naming conventions
 - Place client-side code in files containing "client" in the name
 - Place server-side code in files containing "server" in the name
 - Shared code goes in files containing "shared" or neither
+- See [qbx_core/server/functions.lua](https://github.com/Qbox-project/qbx_core/blob/main/server/functions.lua) for an example of "good" LuaDoc documentation
 
 ## Credits
 

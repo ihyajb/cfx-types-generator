@@ -3,11 +3,13 @@ import path from 'path';
 import { glob } from 'glob';
 import { LuaParser } from './parser.js';
 import { TypeGenerator } from './generator.js';
+import { StateBagGenerator } from './state_generator.js';
 
 const CONFIG_FILE = 'config.json';
 
 /**
  * Load configuration from file
+ * @returns {Object} Parsed configuration object
  */
 function loadConfig() {
   const configPath = path.join(process.cwd(), CONFIG_FILE);
@@ -30,6 +32,8 @@ function loadConfig() {
 
 /**
  * Find Lua files based on configuration
+ * @param {Object} config - Configuration object
+ * @returns {Promise<Array>} Array of file paths
  */
 async function findLuaFiles(config) {
   const { inputDir, excludePatterns } = config;
@@ -52,8 +56,10 @@ async function findLuaFiles(config) {
 }
 
 /**
- * Detect resource name from file path
- * Looks for fxmanifest.lua in parent directories
+ * Detect resource name from file path by looking for fxmanifest.lua
+ * @param {string} filePath - Full path to the file
+ * @param {string} inputDir - Base input directory
+ * @returns {string} Detected resource name
  */
 function detectResourceName(filePath, inputDir) {
   let currentDir = path.dirname(filePath);
@@ -110,10 +116,16 @@ async function main() {
 
   const parser = new LuaParser();
 
-  // Map to store generators per resource
-  const generators = new Map();
+  // Map to store type generators per resource
+  const resourceGenerators = new Map();
+
+  // State bag generator for all resources (GlobalState, Player.state, LocalPlayer.state)
+  const stateBagGenerator = new StateBagGenerator();
 
   let totalExports = 0;
+  let totalGlobalStates = 0;
+  let totalPlayerStates = 0;
+  let totalLocalPlayerStates = 0;
 
   // Parse each file
   for (const filePath of luaFiles) {
@@ -124,17 +136,19 @@ async function main() {
     try {
       const content = fs.readFileSync(filePath, 'utf-8');
       const exports = parser.parse(content, filePath);
+      const globalStates = parser.parseGlobalStates(content, filePath);
+      const playerStatesResult = parser.parsePlayerStates(content, filePath);
 
       if (exports.length > 0) {
         // Detect resource name for this file
         const resourceName = detectResourceName(filePath, config.inputDir);
 
-        // Get or create generator for this resource
-        if (!generators.has(resourceName)) {
-          generators.set(resourceName, new TypeGenerator(resourceName));
+        // Get or create type generator for this resource
+        if (!resourceGenerators.has(resourceName)) {
+          resourceGenerators.set(resourceName, new TypeGenerator(resourceName));
         }
 
-        const generator = generators.get(resourceName);
+        const generator = resourceGenerators.get(resourceName);
 
         if (config.verbose) {
           console.log(`✓ Found ${exports.length} export${exports.length === 1 ? '' : 's'}`);
@@ -142,22 +156,54 @@ async function main() {
         generator.addExports(exports, filePath);
         totalExports += exports.length;
       }
+
+      if (globalStates.length > 0) {
+        const resourceName = detectResourceName(filePath, config.inputDir);
+        stateBagGenerator.addGlobalStates(globalStates, resourceName);
+        totalGlobalStates += globalStates.length;
+
+        if (config.verbose) {
+          console.log(`✓ Found ${globalStates.length} GlobalState${globalStates.length === 1 ? '' : 's'}`);
+        }
+      }
+
+      if (playerStatesResult.playerStates.length > 0) {
+        const resourceName = detectResourceName(filePath, config.inputDir);
+        stateBagGenerator.addPlayerStates(playerStatesResult.playerStates, resourceName);
+        totalPlayerStates += playerStatesResult.playerStates.length;
+
+        if (config.verbose) {
+          console.log(`✓ Found ${playerStatesResult.playerStates.length} Player state${playerStatesResult.playerStates.length === 1 ? '' : 's'}`);
+        }
+      }
+
+      if (playerStatesResult.localPlayerStates.length > 0) {
+        const resourceName = detectResourceName(filePath, config.inputDir);
+        stateBagGenerator.addLocalPlayerStates(playerStatesResult.localPlayerStates, resourceName);
+        totalLocalPlayerStates += playerStatesResult.localPlayerStates.length;
+
+        if (config.verbose) {
+          console.log(`✓ Found ${playerStatesResult.localPlayerStates.length} LocalPlayer state${playerStatesResult.localPlayerStates.length === 1 ? '' : 's'}`);
+        }
+      }
     } catch (error) {
       console.error(`  ✗ Error parsing ${filePath}:`, error.message);
     }
   }
 
   console.log(`📊 Found ${totalExports} exports to document`);
+  console.log(`🌐 Found ${totalGlobalStates} GlobalState assignments (${stateBagGenerator.getCount()} unique)`);
+  console.log(`👤 Found ${totalPlayerStates + totalLocalPlayerStates} Player/LocalPlayer state assignments (${stateBagGenerator.getPlayerStateCount() + stateBagGenerator.getLocalPlayerStateCount()} unique)`);
 
-  if (totalExports === 0) {
-    console.log('❌ No exports found in Lua files');
+  if (totalExports === 0 && stateBagGenerator.getTotalCount() === 0) {
+    console.log('❌ No exports or states found in Lua files');
     return;
   }
 
   // Generate type files for each resource
-  console.log(`📝 Generating type definitions for ${generators.size} resource${generators.size === 1 ? '' : 's'}...`);
+  console.log(`📝 Generating type definitions for ${resourceGenerators.size} resource${resourceGenerators.size === 1 ? '' : 's'}...`);
 
-  for (const [resourceName, generator] of generators) {
+  for (const [resourceName, generator] of resourceGenerators) {
     const outputDir = path.join(config.outputDir, resourceName);
 
     // Ensure output directory exists
@@ -170,6 +216,24 @@ async function main() {
     // Write type files
     for (const [filename, content] of Object.entries(typeFiles)) {
       const outputPath = path.join(outputDir, filename);
+      fs.writeFileSync(outputPath, content, 'utf-8');
+      console.log(`  ✓ Generated: ${outputPath}`);
+    }
+  }
+
+  // Generate StateBag types in _internal folder
+  if (stateBagGenerator.getTotalCount() > 0) {
+    console.log(`\n🌐 Generating state definitions...`);
+    const internalDir = path.join(config.outputDir, '_internal');
+
+    if (!fs.existsSync(internalDir)) {
+      fs.mkdirSync(internalDir, { recursive: true });
+    }
+
+    const stateFiles = stateBagGenerator.generate();
+
+    for (const [filename, content] of Object.entries(stateFiles)) {
+      const outputPath = path.join(internalDir, filename);
       fs.writeFileSync(outputPath, content, 'utf-8');
       console.log(`  ✓ Generated: ${outputPath}`);
     }

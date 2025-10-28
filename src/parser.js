@@ -1,9 +1,12 @@
 /**
- * Parses Lua files to extract export definitions and their documentation
+ * Parses Lua files to extract export definitions, state bag assignments, and their documentation
  */
 export class LuaParser {
   constructor() {
     this.exports = [];
+    this.globalStates = [];
+    this.playerStates = [];
+    this.localPlayerStates = [];
   }
 
   /**
@@ -30,6 +33,151 @@ export class LuaParser {
     }
 
     return this.exports;
+  }
+
+  /**
+   * Parse GlobalState assignments from Lua file content
+   * @param {string} content - The Lua file content
+   * @param {string} filePath - The file path for context
+   * @returns {Array} Array of GlobalState definitions
+   */
+  parseGlobalStates(content, filePath) {
+    this.globalStates = [];
+    const lines = content.split('\n');
+    const context = this.detectContext(filePath);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Skip commented lines
+      if (line.startsWith('--')) {
+        continue;
+      }
+
+      // Match GlobalState.key = value
+      const match = line.match(/GlobalState\.(\w+)\s*=\s*(.+)/);
+      if (match) {
+        const name = match[1];
+        const value = match[2].trim();
+        const type = this.inferTypeFromValue(value);
+
+        this.globalStates.push({
+          name,
+          type,
+          context,
+          filePath,
+          value
+        });
+      }
+    }
+
+    return this.globalStates;
+  }
+
+  /**
+   * Infer Lua type from a value string
+   * @param {string} value
+   * @returns {string}
+   */
+  inferTypeFromValue(value) {
+    // Remove trailing comments
+    value = value.split('--')[0].trim();
+
+    // Boolean
+    if (value === 'true' || value === 'false') {
+      return 'boolean';
+    }
+
+    // Nil
+    if (value === 'nil') {
+      return 'nil';
+    }
+
+    // String (single or double quotes)
+    if ((value.startsWith("'") && value.endsWith("'")) ||
+        (value.startsWith('"') && value.endsWith('"'))) {
+      return 'string';
+    }
+
+    // Number
+    if (/^-?\d+\.?\d*$/.test(value)) {
+      return 'number';
+    }
+
+    // Table
+    if (value.startsWith('{')) {
+      return 'table';
+    }
+
+    // Default to any for complex expressions
+    return 'any';
+  }
+
+  /**
+   * Parse Player and LocalPlayer state assignments from Lua file content
+   * @param {string} content - The Lua file content
+   * @param {string} filePath - The file path for context
+   * @returns {Object} Object containing playerStates and localPlayerStates arrays
+   */
+  parsePlayerStates(content, filePath) {
+    this.playerStates = [];
+    this.localPlayerStates = [];
+    const lines = content.split('\n');
+    const context = this.detectContext(filePath);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Skip commented lines
+      if (line.startsWith('--')) {
+        continue;
+      }
+
+      // Match Player(something).state:set('key', value, replicated)
+      // or Player(something).state.set('key', value, replicated)
+      const playerMatch = line.match(/Player\([^)]+\)\.state[:.]set\(\s*['"]([^'"]+)['"]\s*,\s*([^,]+)(?:,\s*([^)]+))?\)/);
+
+      if (playerMatch) {
+        const name = playerMatch[1];
+        const value = playerMatch[2].trim();
+        const replicated = playerMatch[3] ? playerMatch[3].trim() : 'false';
+        const type = this.inferTypeFromValue(value);
+
+        this.playerStates.push({
+          name,
+          type,
+          context,
+          filePath,
+          value,
+          replicated: replicated === 'true'
+        });
+      }
+
+      // Match LocalPlayer.state:set('key', value, replicated)
+      // or LocalPlayer.state.set('key', value, replicated)
+      const localPlayerMatch = line.match(/LocalPlayer\.state[:.]set\(\s*['"]([^'"]+)['"]\s*,\s*([^,]+)(?:,\s*([^)]+))?\)/);
+
+      if (localPlayerMatch) {
+        const name = localPlayerMatch[1];
+        const value = localPlayerMatch[2].trim();
+        const replicated = localPlayerMatch[3] ? localPlayerMatch[3].trim() : 'false';
+        const type = this.inferTypeFromValue(value);
+
+        this.localPlayerStates.push({
+          name,
+          type,
+          context,
+          filePath,
+          value,
+          replicated: replicated === 'true'
+        });
+      }
+    }
+
+    return {
+      playerStates: this.playerStates,
+      localPlayerStates: this.localPlayerStates
+    };
   }
 
   /**
@@ -61,21 +209,9 @@ export class LuaParser {
   parseExport(lines, lineIndex, context) {
     const exportLine = lines[lineIndex];
 
-    let isInline = false;
-    let inlineCheckText = exportLine;
-
-    // Check up to 3 lines ahead for inline function definition
-    for (let i = 0; i < 3 && lineIndex + i < lines.length; i++) {
-      const checkLine = lines[lineIndex + i].trim();
-      // Skip commented lines when checking for inline functions
-      if (!checkLine.startsWith('--')) {
-        inlineCheckText += ' ' + checkLine;
-        if (inlineCheckText.includes('function(') || inlineCheckText.includes('function (')) {
-          isInline = true;
-          break;
-        }
-      }
-    }
+    // If an export contains the word 'function' and parentheses right after, it's an inline function
+    //TODO: We may need to go back to searching multi-line but i dont see why
+    const isInline = exportLine.includes('function(') || exportLine.includes('function (');
 
     // Match export with either a function reference or inline function
     let exportMatch = exportLine.match(/exports\s*\(\s*['"]([^'"]+)['"]\s*,\s*(\w+)\s*\)/);
@@ -126,10 +262,11 @@ export class LuaParser {
   }
 
   /**
-   * Extract LuaDoc comments before a line
-   * @param {Array} lines
-   * @param {number} startIndex
-   * @returns {Object}
+   * Extract LuaDoc comments before a function definition
+   * Looks backwards from the function definition to find documentation
+   * @param {Array} lines - All lines in the file
+   * @param {number} startIndex - Index to start searching backwards from
+   * @returns {Object} Parsed documentation with description, params, returns, etc.
    */
   extractDocumentation(lines, startIndex) {
     const docs = {
@@ -143,7 +280,7 @@ export class LuaParser {
     const commentLines = [];
     let hasThreeDashComments = false;
 
-    // Check if there are any three-dash comments (since they take precedence)
+    // Check if there are any three-dash comments (they take precedence over two-dash comments)
     let j = startIndex - 1;
     while (j >= 0) {
       const checkLine = lines[j].trim();
@@ -157,7 +294,7 @@ export class LuaParser {
       }
     }
 
-    // Collects all comment lines above & stop at first non-comment line
+    // Collect all comment lines above the function and stop at first non-comment line
     while (i >= 0) {
       const line = lines[i].trim();
 
@@ -220,14 +357,14 @@ export class LuaParser {
   }
 
   /**
-   * Find function definition by name
-   * @param {Array} lines
-   * @param {number} exportLineIndex
-   * @param {string} functionName
-   * @returns {Object|null}
+   * Find function definition by searching upward from the export statement
+   * @param {Array} lines - All lines in the file
+   * @param {number} exportLineIndex - Index of the export line
+   * @param {string} functionName - Name of the function to find
+   * @returns {Object|null} Function definition and line index, or null if not found
    */
   findFunctionDefinition(lines, exportLineIndex, functionName) {
-    // Search up for definition (is 500 lines enough or too much?)
+    // Search upward for definition (maximum 500 lines above)
     for (let i = exportLineIndex - 1; i >= Math.max(0, exportLineIndex - 500); i--) {
       const line = lines[i].trim();
 
@@ -251,13 +388,13 @@ export class LuaParser {
   }
 
   /**
-   * Parse inline function
-   * @param {Array} lines
-   * @param {number} lineIndex
-   * @returns {Object}
+   * Parse inline function definition from export statement
+   * Handles multi-line function definitions
+   * @param {Array} lines - All lines in the file
+   * @param {number} lineIndex - Index of the export line
+   * @returns {Object} Function signature with parameters and return types
    */
   parseInlineFunction(lines, lineIndex) {
-    // Combine next few lines to handle multi-line function definitions (why do devs do this ಠ_ಠ)
     let combinedText = '';
     for (let i = 0; i < 5 && lineIndex + i < lines.length; i++) {
       combinedText += ' ' + lines[lineIndex + i].trim();
