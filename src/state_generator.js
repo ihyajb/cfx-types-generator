@@ -147,7 +147,6 @@ export class GlobalStateGenerator {
     // Shared Player/LocalPlayer state section
     if (this.playerStates.size > 0 || this.localPlayerStates.size > 0) {
       content += '---Player state table\n';
-      content += '---Shared between Player(id).state (server) and LocalPlayer.state (client)\n';
       content += '---@class StateBagInterface\n';
 
       // Merge all player and local player states

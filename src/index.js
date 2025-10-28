@@ -3,7 +3,7 @@ import path from 'path';
 import { glob } from 'glob';
 import { LuaParser } from './parser.js';
 import { TypeGenerator } from './generator.js';
-import { GlobalStateGenerator } from './globalStateGenerator.js';
+import { GlobalStateGenerator } from './state_generator.js';
 
 const CONFIG_FILE = 'config.json';
 
@@ -114,8 +114,9 @@ async function main() {
   // Map to store generators per resource
   const generators = new Map();
 
-  // GlobalState generator for all resources
-  const globalStateGenerator = new GlobalStateGenerator();
+  // State generator for all resources
+  //TODO: Rename to StateGenerator
+  const stateGenerator = new GlobalStateGenerator();
 
   let totalExports = 0;
   let totalGlobalStates = 0;
@@ -154,7 +155,7 @@ async function main() {
 
       if (globalStates.length > 0) {
         const resourceName = detectResourceName(filePath, config.inputDir);
-        globalStateGenerator.addGlobalStates(globalStates, resourceName);
+        stateGenerator.addGlobalStates(globalStates, resourceName);
         totalGlobalStates += globalStates.length;
 
         if (config.verbose) {
@@ -164,7 +165,7 @@ async function main() {
 
       if (playerStatesResult.playerStates.length > 0) {
         const resourceName = detectResourceName(filePath, config.inputDir);
-        globalStateGenerator.addPlayerStates(playerStatesResult.playerStates, resourceName);
+        stateGenerator.addPlayerStates(playerStatesResult.playerStates, resourceName);
         totalPlayerStates += playerStatesResult.playerStates.length;
 
         if (config.verbose) {
@@ -174,7 +175,7 @@ async function main() {
 
       if (playerStatesResult.localPlayerStates.length > 0) {
         const resourceName = detectResourceName(filePath, config.inputDir);
-        globalStateGenerator.addLocalPlayerStates(playerStatesResult.localPlayerStates, resourceName);
+        stateGenerator.addLocalPlayerStates(playerStatesResult.localPlayerStates, resourceName);
         totalLocalPlayerStates += playerStatesResult.localPlayerStates.length;
 
         if (config.verbose) {
@@ -187,10 +188,10 @@ async function main() {
   }
 
   console.log(`📊 Found ${totalExports} exports to document`);
-  console.log(`🌐 Found ${totalGlobalStates} GlobalState assignments (${globalStateGenerator.getCount()} unique)`);
-  console.log(`👤 Found ${totalPlayerStates + totalLocalPlayerStates} Player/LocalPlayer state assignments (${globalStateGenerator.getPlayerStateCount() + globalStateGenerator.getLocalPlayerStateCount()} unique)`);
+  console.log(`🌐 Found ${totalGlobalStates} GlobalState assignments (${stateGenerator.getCount()} unique)`);
+  console.log(`👤 Found ${totalPlayerStates + totalLocalPlayerStates} Player/LocalPlayer state assignments (${stateGenerator.getPlayerStateCount() + stateGenerator.getLocalPlayerStateCount()} unique)`);
 
-  if (totalExports === 0 && globalStateGenerator.getTotalCount() === 0) {
+  if (totalExports === 0 && stateGenerator.getTotalCount() === 0) {
     console.log('❌ No exports or states found in Lua files');
     return;
   }
@@ -217,7 +218,7 @@ async function main() {
   }
 
   // Generate GlobalState types in _internal folder
-  if (globalStateGenerator.getTotalCount() > 0) {
+  if (stateGenerator.getTotalCount() > 0) {
     console.log(`\n🌐 Generating state definitions...`);
     const internalDir = path.join(config.outputDir, '_internal');
 
@@ -225,7 +226,7 @@ async function main() {
       fs.mkdirSync(internalDir, { recursive: true });
     }
 
-    const stateFiles = globalStateGenerator.generate();
+    const stateFiles = stateGenerator.generate();
 
     for (const [filename, content] of Object.entries(stateFiles)) {
       const outputPath = path.join(internalDir, filename);
