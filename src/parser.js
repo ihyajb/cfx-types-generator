@@ -209,7 +209,8 @@ export class LuaParser {
   parseExport(lines, lineIndex, context) {
     const exportLine = lines[lineIndex];
 
-    // If an export contains the word 'function' and parentheses right after, it's an inline function (hopefully)
+    // If an export contains the word 'function' and parentheses right after, it's an inline function
+    //TODO: We may need to go back to searching multi-line but i dont see why
     const isInline = exportLine.includes('function(') || exportLine.includes('function (');
 
     // Match export with either a function reference or inline function
