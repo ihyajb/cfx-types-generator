@@ -119,6 +119,8 @@ async function main() {
 
   let totalExports = 0;
   let totalGlobalStates = 0;
+  let totalPlayerStates = 0;
+  let totalLocalPlayerStates = 0;
 
   // Parse each file
   for (const filePath of luaFiles) {
@@ -130,6 +132,7 @@ async function main() {
       const content = fs.readFileSync(filePath, 'utf-8');
       const exports = parser.parse(content, filePath);
       const globalStates = parser.parseGlobalStates(content, filePath);
+      const playerStatesResult = parser.parsePlayerStates(content, filePath);
 
       if (exports.length > 0) {
         // Detect resource name for this file
@@ -158,6 +161,26 @@ async function main() {
           console.log(`✓ Found ${globalStates.length} GlobalState${globalStates.length === 1 ? '' : 's'}`);
         }
       }
+
+      if (playerStatesResult.playerStates.length > 0) {
+        const resourceName = detectResourceName(filePath, config.inputDir);
+        globalStateGenerator.addPlayerStates(playerStatesResult.playerStates, resourceName);
+        totalPlayerStates += playerStatesResult.playerStates.length;
+
+        if (config.verbose) {
+          console.log(`✓ Found ${playerStatesResult.playerStates.length} Player state${playerStatesResult.playerStates.length === 1 ? '' : 's'}`);
+        }
+      }
+
+      if (playerStatesResult.localPlayerStates.length > 0) {
+        const resourceName = detectResourceName(filePath, config.inputDir);
+        globalStateGenerator.addLocalPlayerStates(playerStatesResult.localPlayerStates, resourceName);
+        totalLocalPlayerStates += playerStatesResult.localPlayerStates.length;
+
+        if (config.verbose) {
+          console.log(`✓ Found ${playerStatesResult.localPlayerStates.length} LocalPlayer state${playerStatesResult.localPlayerStates.length === 1 ? '' : 's'}`);
+        }
+      }
     } catch (error) {
       console.error(`  ✗ Error parsing ${filePath}:`, error.message);
     }
@@ -165,9 +188,10 @@ async function main() {
 
   console.log(`📊 Found ${totalExports} exports to document`);
   console.log(`🌐 Found ${totalGlobalStates} GlobalState assignments (${globalStateGenerator.getCount()} unique)`);
+  console.log(`👤 Found ${totalPlayerStates + totalLocalPlayerStates} Player/LocalPlayer state assignments (${globalStateGenerator.getPlayerStateCount() + globalStateGenerator.getLocalPlayerStateCount()} unique)`);
 
-  if (totalExports === 0 && globalStateGenerator.getCount() === 0) {
-    console.log('❌ No exports or GlobalStates found in Lua files');
+  if (totalExports === 0 && globalStateGenerator.getTotalCount() === 0) {
+    console.log('❌ No exports or states found in Lua files');
     return;
   }
 
@@ -193,17 +217,17 @@ async function main() {
   }
 
   // Generate GlobalState types in _internal folder
-  if (globalStateGenerator.getCount() > 0) {
-    console.log(`\n🌐 Generating GlobalState definitions...`);
+  if (globalStateGenerator.getTotalCount() > 0) {
+    console.log(`\n🌐 Generating state definitions...`);
     const internalDir = path.join(config.outputDir, '_internal');
 
     if (!fs.existsSync(internalDir)) {
       fs.mkdirSync(internalDir, { recursive: true });
     }
 
-    const globalStateFiles = globalStateGenerator.generate();
+    const stateFiles = globalStateGenerator.generate();
 
-    for (const [filename, content] of Object.entries(globalStateFiles)) {
+    for (const [filename, content] of Object.entries(stateFiles)) {
       const outputPath = path.join(internalDir, filename);
       fs.writeFileSync(outputPath, content, 'utf-8');
       console.log(`  ✓ Generated: ${outputPath}`);

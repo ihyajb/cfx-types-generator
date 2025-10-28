@@ -5,6 +5,8 @@ export class LuaParser {
   constructor() {
     this.exports = [];
     this.globalStates = [];
+    this.playerStates = [];
+    this.localPlayerStates = [];
   }
 
   /**
@@ -111,6 +113,75 @@ export class LuaParser {
 
     // Default to any for complex expressions
     return 'any';
+  }
+
+  /**
+   * Parse Player state assignments from Lua file content
+   * @param {string} content - The Lua file content
+   * @param {string} filePath - The file path for context
+   * @returns {Array} Array of Player state definitions
+   */
+  parsePlayerStates(content, filePath) {
+    this.playerStates = [];
+    this.localPlayerStates = [];
+    const lines = content.split('\n');
+    const context = this.detectContext(filePath);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Skip commented lines
+      if (line.startsWith('--')) {
+        continue;
+      }
+
+      // Match Player(something).state:set('key', value, replicated)
+      // or Player(something).state.set('key', value, replicated)
+      const playerMatch = line.match(/Player\([^)]+\)\.state[:.]set\(\s*['"]([^'"]+)['"]\s*,\s*([^,]+)(?:,\s*([^)]+))?\)/);
+
+      if (playerMatch) {
+        const name = playerMatch[1];
+        const value = playerMatch[2].trim();
+        const replicated = playerMatch[3] ? playerMatch[3].trim() : 'false';
+
+        const type = this.inferTypeFromValue(value);
+
+        this.playerStates.push({
+          name,
+          type,
+          context,
+          filePath,
+          value,
+          replicated: replicated === 'true'
+        });
+      }
+
+      // Match LocalPlayer.state:set('key', value, replicated)
+      // or LocalPlayer.state.set('key', value, replicated)
+      const localPlayerMatch = line.match(/LocalPlayer\.state[:.]set\(\s*['"]([^'"]+)['"]\s*,\s*([^,]+)(?:,\s*([^)]+))?\)/);
+
+      if (localPlayerMatch) {
+        const name = localPlayerMatch[1];
+        const value = localPlayerMatch[2].trim();
+        const replicated = localPlayerMatch[3] ? localPlayerMatch[3].trim() : 'false';
+
+        const type = this.inferTypeFromValue(value);
+
+        this.localPlayerStates.push({
+          name,
+          type,
+          context,
+          filePath,
+          value,
+          replicated: replicated === 'true'
+        });
+      }
+    }
+
+    return {
+      playerStates: this.playerStates,
+      localPlayerStates: this.localPlayerStates
+    };
   }
 
   /**
