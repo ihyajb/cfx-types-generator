@@ -1,6 +1,6 @@
 # Cfx Lua Type Generator
 
-A JavaScript tool that scans Lua files in a FiveM/RedM server and generates TypeScript-style type definitions for Lua Language Server, similar to [ox_types](https://github.com/overextended/ox_types).
+Automatically generate Lua type definitions for your FiveM/RedM server resource exports. This tool scans your server files and creates IntelliSense type definitions for resource exports, Cfx GlobalState, LocalPlayer and Player state variables, giving you autocomplete and type checking in VS Code.
 
 ## Features
 
@@ -47,16 +47,18 @@ Edit the `config.json` file in your project root:
 
 #### Configuration Options
 
-- **inputDir**: Directory to scan for Lua files (default: `./server`)
-- **outputDir**: Where to output generated type files (default: `./types`)
+- **inputDir**: Directory to scan for Lua files *(normally your server resources folder)*
+- **outputDir**: Where to output generated type files
 - **excludePatterns**: Glob patterns to exclude from scanning
 - **verbose**: Show detailed output during generation
 
 ### Using Generated Types
 
-After generating types, add them to your VS Code settings:
+Now that we generated the types, we need to add them to your VS Code settings:
 
-1. Install the [CfxLua IntelliSense](https://marketplace.visualstudio.com/items?itemName=communityox.cfxlua-vscode-cox) extension
+1. Install the following extensions
+    - [Lua](https://marketplace.visualstudio.com/items?itemName=sumneko.lua)
+    - [CfxLua IntelliSense](https://marketplace.visualstudio.com/items?itemName=communityox.cfxlua-vscode-cox)
 2. Open your VS Code settings (JSON)
 3. Add the types directory to `Lua.workspace.library`:
 
@@ -70,9 +72,7 @@ After generating types, add them to your VS Code settings:
 ```
 
 ## Supported Patterns
-
 ### Export Patterns
-
 #### Function-Based Export
 
 ```lua
@@ -97,30 +97,22 @@ end)
 ```
 
 ### State Patterns
-
-The generator automatically detects and creates type definitions for Cfx state bags:
-
 #### GlobalState
 
 ```lua
--- Automatically detected and typed
 GlobalState.weather = "sunny"
 GlobalState.policeOnDuty = 5
 GlobalState.heistCooldown = true
 ```
 
-#### Player State (Server)
+#### Player States
 
 ```lua
--- Automatically detected and typed
+--SERVER
 Player(source).state:set("isLoggedIn", true, true)
 Player(playerId).state.invBusy = false
-```
 
-#### LocalPlayer State (Client)
-
-```lua
--- Automatically detected and typed
+--CLIENT
 LocalPlayer.state:set("inv_busy", false, true)
 LocalPlayer.state.dead = true
 ```
@@ -161,6 +153,7 @@ function exports.my_resource:CreateJobs(newJobs, commitToFile) end
 - Place client-side code in files containing "client" in the name
 - Place server-side code in files containing "server" in the name
 - Shared code goes in files containing "shared" or neither
+- See [qbx_core/server/functions.lua](https://github.com/Qbox-project/qbx_core/blob/main/server/functions.lua) for an example of "good" LuaDoc documentation
 
 ## Credits
 
