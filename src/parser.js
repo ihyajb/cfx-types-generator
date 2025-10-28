@@ -204,8 +204,8 @@ export class LuaParser {
    * @returns {Object|null}
    */
   findFunctionDefinition(lines, exportLineIndex, functionName) {
-    // Search up for definition
-    for (let i = exportLineIndex - 1; i >= Math.max(0, exportLineIndex - 100); i--) {
+    // Search up for definition (is 500 lines enough or too much?)
+    for (let i = exportLineIndex - 1; i >= Math.max(0, exportLineIndex - 500); i--) {
       const line = lines[i].trim();
 
       // Check for local function or global function
