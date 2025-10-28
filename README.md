@@ -1,10 +1,10 @@
-# FiveM Lua Type Generator
+# Cfx Lua Type Generator
 
-A JavaScript tool that scans Lua files in a FiveM server resource and generates TypeScript-style type definitions for Lua Language Server, similar to [ox_types](https://github.com/overextended/ox_types).
+A JavaScript tool that scans Lua files in a FiveM/RedM server and generates TypeScript-style type definitions for Lua Language Server, similar to [ox_types](https://github.com/overextended/ox_types).
 
 ## Features
 
-- Automatically scans all Lua files in your FiveM resource
+- Automatically scans all Lua files in your FiveM/RedM server
 - Parses LuaDoc comments (`---@param`, `---@return`, etc.)
 - Detects both function-based and inline exports
 - Separates client, server, and shared exports
