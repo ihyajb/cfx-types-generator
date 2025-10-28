@@ -1,5 +1,5 @@
 {
-  "inputDir": "C:\\Users\\aj\\Documents\\FiveM\\EscapeRP-Dev\\resources",
+  "inputDir": "C:\\Users\\ihyajb\\Documents\\FiveM\\RoleplayServer\\resources",
   "outputDir": "./types",
   "excludePatterns": [
     "types/**",
