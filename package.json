@@ -1,0 +1,29 @@
+{
+  "name": "fivem-lua-type-generator",
+  "version": "1.0.0",
+  "description": "Generates TypeScript-style Lua type definitions for FiveM server exports",
+  "main": "src/index.js",
+  "type": "module",
+  "bin": {
+    "fivem-type-gen": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "keywords": [
+    "fivem",
+    "lua",
+    "types",
+    "typescript",
+    "type-generation",
+    "luadoc"
+  ],
+  "author": "ihyajb",
+  "license": "MIT",
+  "dependencies": {
+    "glob": "^10.3.10"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

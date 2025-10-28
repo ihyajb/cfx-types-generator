@@ -1,0 +1,23 @@
+{
+  "inputDir": "C:\\Users\\aj\\Documents\\FiveM\\EscapeRP-Dev\\resources",
+  "outputDir": "./types",
+  "excludePatterns": [
+    "types/**",
+
+    "**/types.lua",
+    "\\[dev\\]/**",
+    "\\[cfx-default\\]/**",
+    "\\[cfx\\]/**",
+    "\\[maps\\]/**",
+    "\\[maps-no-run\\]/**",
+    "\\[vehicles\\]/**",
+    "\\[weapons\\]/**",
+    "\\[clothing\\]/**",
+
+    "**/ox_inventory/**",
+    "**/ox_target/**",
+    "**/ox_lib/**",
+    "**/ox_doorlock/**"
+  ],
+  "verbose": false
+}
